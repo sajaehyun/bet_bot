@@ -14,7 +14,7 @@ def get_news_for_game(home, away):
         f"{away} 국가대표",
     ]
     for query in queries:
-        news = search_daum_rss(query)
+        news = search_google_rss(query)
         for n in news:
             if n not in results:
                 results.append(n)
@@ -24,16 +24,20 @@ def get_news_for_game(home, away):
     return results[:5] if results else ['관련 뉴스 없음']
 
 
-def search_daum_rss(query):
+def search_google_rss(query):
     try:
-        url = f"https://news.daum.net/search/news?q={requests.utils.quote(query)}&sort=recency"
-        res = requests.get(url, headers=headers, timeout=8)
-        soup = BeautifulSoup(res.text, 'html.parser')
+        url = f"https://news.google.com/rss/search?q={requests.utils.quote(query)}&hl=ko&gl=KR&ceid=KR:ko"
+        res = requests.get(url, headers=headers, timeout=10)
+        res.encoding = 'utf-8'
+        soup = BeautifulSoup(res.text, 'xml')
+
         results = []
-        for item in soup.select('a.link_txt, .tit_g a, a.tit_g, .item_issue a'):
-            title = item.get_text(strip=True)
-            if title and 10 < len(title) < 100:
-                results.append(title)
+        for item in soup.find_all('item'):
+            title = item.find('title')
+            if title:
+                txt = title.get_text(strip=True)
+                if txt and 10 < len(txt) < 100:
+                    results.append(txt)
             if len(results) >= 3:
                 break
         return results
