@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, render_template_string
 from crawler import get_betman_games
 from news_search import get_news_for_game
-import time
 
 app = Flask(__name__)
 
@@ -38,48 +37,63 @@ HTML_TEMPLATE = """
     <div id="result"></div>
 
     <script>
-        function startCollect() {
-            const btn = document.getElementById('btn');
-            const status = document.getElementById('status');
-            const result = document.getElementById('result');
+    function startCollect() {
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
 
-            btn.disabled = true;
-            btn.textContent = '⏳ 수집 중...';
-            status.textContent = '경기 목록 수집 중... (2~3분 소요)';
-            result.innerHTML = '';
+        btn.disabled = true;
+        btn.textContent = '⏳ 수집 중...';
+        status.textContent = '경기 목록 수집 중...';
+        result.innerHTML = '';
 
-            fetch('/api/collect')
-                .then(res => res.json())
-                .then(data => {
-                    status.textContent = `✅ ${data.length}경기 수집 완료!`;
-                    btn.disabled = false;
-                    btn.textContent = '🔍 다시 분석';
-                    renderGames(data);
-                })
-                .catch(err => {
-                    status.textContent = '❌ 오류 발생, 다시 시도하세요';
-                    btn.disabled = false;
-                    btn.textContent = '🔍 분석 시작';
+        // 1단계: 경기 목록만 먼저 가져오기
+        fetch('/api/games')
+            .then(res => res.json())
+            .then(games => {
+                status.textContent = `✅ ${games.length}경기 발견! 뉴스 수집 중...`;
+                renderGames(games);
+
+                // 2단계: 각 경기 뉴스 개별 요청
+                games.forEach((g, i) => {
+                    fetch(`/api/news?home=${encodeURIComponent(g.home)}&away=${encodeURIComponent(g.away)}`)
+                        .then(res => res.json())
+                        .then(news => {
+                            const newsDiv = document.getElementById(`news-${i}`);
+                            if (newsDiv) {
+                                newsDiv.innerHTML = news.map(n => `<div class="news-item">📰 ${n}</div>`).join('');
+                            }
+                            // 마지막 경기 뉴스까지 완료되면 버튼 활성화
+                            if (i === games.length - 1) {
+                                btn.disabled = false;
+                                btn.textContent = '🔍 다시 분석';
+                                status.textContent = '✅ 분석 완료!';
+                            }
+                        });
                 });
-        }
+            })
+            .catch(err => {
+                status.textContent = '❌ 오류 발생, 다시 시도하세요';
+                btn.disabled = false;
+                btn.textContent = '🔍 분석 시작';
+            });
+    }
 
-        function renderGames(games) {
-            const result = document.getElementById('result');
-            result.innerHTML = games.map(g => `
-                <div class="game">
-                    <div class="teams">${g.no}. ${g.home} vs ${g.away}</div>
-                    <div class="odds">
-                        <div class="odd-box"><div class="label">홈 승</div><div class="value">${g.odd_home}</div></div>
-                        <div class="odd-box"><div class="label">무</div><div class="value">${g.odd_draw}</div></div>
-                        <div class="odd-box"><div class="label">원정 승</div><div class="value">${g.odd_away}</div></div>
-                    </div>
-                    ${g.signal ? `<div class="signal">${g.signal}</div>` : ''}
-                    <div class="news">
-                        ${g.news.map(n => `<div class="news-item">📰 ${n}</div>`).join('')}
-                    </div>
+    function renderGames(games) {
+        const result = document.getElementById('result');
+        result.innerHTML = games.map((g, i) => `
+            <div class="game">
+                <div class="teams">${g.no}. ${g.home} vs ${g.away}</div>
+                <div class="odds">
+                    <div class="odd-box"><div class="label">홈 승</div><div class="value">${g.odd_home}</div></div>
+                    <div class="odd-box"><div class="label">무</div><div class="value">${g.odd_draw}</div></div>
+                    <div class="odd-box"><div class="label">원정 승</div><div class="value">${g.odd_away}</div></div>
                 </div>
-            `).join('');
-        }
+                ${g.signal ? `<div class="signal">${g.signal}</div>` : ''}
+                <div class="news" id="news-${i}"><div class="news-item">⏳ 뉴스 수집 중...</div></div>
+            </div>
+        `).join('');
+    }
     </script>
 </body>
 </html>
@@ -89,26 +103,18 @@ HTML_TEMPLATE = """
 def index():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/api/collect')
-def collect():
+@app.route('/api/games')
+def get_games():
     games = get_betman_games()
-    result = []
-    for game in games:
-        home = game['home']
-        away = game['away']
-        news = get_news_for_game(home, away)
-        time.sleep(0.3)
-        result.append({
-            'no': game.get('no', ''),
-            'home': home,
-            'away': away,
-            'odd_home': game.get('odd_home', '-'),
-            'odd_draw': game.get('odd_draw', '-'),
-            'odd_away': game.get('odd_away', '-'),
-            'signal': game.get('signal', ''),
-            'news': news
-        })
-    return jsonify(result)
+    return jsonify(games)
+
+@app.route('/api/news')
+def get_news():
+    from flask import request
+    home = request.args.get('home', '')
+    away = request.args.get('away', '')
+    news = get_news_for_game(home, away)
+    return jsonify(news)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
