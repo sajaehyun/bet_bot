@@ -64,14 +64,14 @@ def get_betman_games():
             })
 
         if games:
-            print(f"✅ 젠토토 {len(games)}경기 수집 완료!")
+            print(f"총 {len(games)}경기 수집 완료!")
             return games
 
-        print("⚠️ 파싱 실패 → 더미 사용")
+        print("파싱 실패 → 더미 사용")
         return get_dummy_games()
 
     except Exception as e:
-        print(f"❌ 오류: {e}")
+        print(f"오류: {e}")
         return get_dummy_games()
 
 
